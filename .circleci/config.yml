@@ -1,0 +1,28 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.0
+
+jobs:
+  sonarqube-scan:
+    docker:
+      - image: cimg/node:18.20
+    steps:
+      - checkout
+      - run:
+          name: Install Dependencies
+          command: npm install
+      - run:
+          name: Run SonarQube Scan
+          command: |
+            npx sonar-scanner \
+              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+              -Dsonar.organization=${SONAR_ORG} \
+              -Dsonar.sources=./ \
+              -Dsonar.host.url=https://sonarcloud.io \
+              -Dsonar.login=${SONAR_TOKEN}
+
+workflows:
+  sonar:
+    jobs:
+      - sonarqube-scan

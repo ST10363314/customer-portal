@@ -6,22 +6,86 @@ orbs:
 jobs:
   sonar-scanner:
     docker:
-      - image: cimg/node:18.20
-    working_directory: ~/project/backend
+      - image: cimg/node:20.16
+    working_directory: ~/project
     steps:
       - checkout
+
+      # --- Debug: show what Circle actually checked out ---
       - run:
-          name: Install Backend Dependencies
-          command: npm install
+          name: Print workspace tree
+          command: |
+            echo "PWD: $(pwd)"
+            echo "Repo root contents:"
+            ls -la
+            echo ""
+            echo "backend dir:"
+            ls -la backend || true
+            echo ""
+            echo "frontend dir:"
+            ls -la frontend || true
+            echo ""
+            echo "Show backend/package.json:"
+            test -f backend/package.json && cat backend/package.json || echo "backend/package.json NOT FOUND"
+
+      # --- Hard fail early if backend/package.json truly isn't there ---
       - run:
-          name: Run SonarQube Scan
+          name: Ensure backend/package.json exists
+          command: |
+            if [ ! -f backend/package.json ]; then
+              echo "ERROR: backend/package.json not found at $(pwd)/backend/package.json"
+              echo "Check your repository structure and commit paths."
+              exit 1
+            fi
+
+      # --- Cache installs per folder ---
+      - restore_cache:
+          keys:
+            - v1-backend-{{ checksum "backend/package-lock.json" }}
+            - v1-backend-
+      - restore_cache:
+          keys:
+            - v1-frontend-{{ checksum "frontend/package-lock.json" }}
+            - v1-frontend-
+
+      # --- Install deps (backend + frontend) ---
+      - run:
+          name: Install backend deps
+          command: |
+            cd backend
+            if [ -f package-lock.json ]; then
+              npm ci
+            else
+              npm install
+            fi
+
+      - run:
+          name: Install frontend deps
+          command: |
+            cd frontend
+            if [ -f package-lock.json ]; then
+              npm ci
+            else
+              npm install
+            fi
+
+      - save_cache:
+          key: v1-backend-{{ checksum "backend/package-lock.json" }}
+          paths:
+            - backend/node_modules
+      - save_cache:
+          key: v1-frontend-{{ checksum "frontend/package-lock.json" }}
+          paths:
+            - frontend/node_modules
+
+      # --- Sonar scan (uses your env vars) ---
+      - run:
+          name: SonarCloud Scan
           command: |
             npx sonar-scanner \
-              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-              -Dsonar.organization=${SONAR_ORG} \
-              -Dsonar.sources=. \
-              -Dsonar.host.url=https://sonarcloud.io \
-              -Dsonar.login=${SONAR_TOKEN}
+              -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+              -Dsonar.organization="${SONAR_ORG}" \
+              -Dsonar.login="${SONAR_TOKEN}"
 
 workflows:
   sonar:
